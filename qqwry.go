@@ -3,6 +3,7 @@ package qqwry
 import (
 	"encoding/binary"
 	"log"
+	"sync"
 
 	"github.com/yinheli/mahonia"
 	// "encoding/hex"
@@ -17,6 +18,7 @@ const (
 )
 
 var file *os.File
+var lock sync.Mutex
 
 // @author yinheli
 type QQwry struct {
@@ -39,6 +41,8 @@ func NewQQwry(filepath string) *QQwry {
 }
 
 func (this *QQwry) Find(ip string) *QQwry {
+	lock.Lock()
+	this.Ip = ip
 	offset := this.searchIndex(binary.BigEndian.Uint32(net.ParseIP(ip).To4()))
 	// log.Println("loc offset:", offset)
 	if offset <= 0 {
@@ -75,6 +79,7 @@ func (this *QQwry) Find(ip string) *QQwry {
 	enc := mahonia.NewDecoder("gbk")
 	this.Country = enc.ConvertString(string(country))
 	this.City = enc.ConvertString(string(area))
+	lock.Unlock()
 	return this
 }
 
