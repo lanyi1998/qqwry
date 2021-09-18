@@ -2,6 +2,7 @@ package qqwry
 
 import (
 	"encoding/binary"
+	"log"
 
 	"github.com/yinheli/mahonia"
 	// "encoding/hex"
@@ -15,37 +16,33 @@ const (
 	REDIRECT_MODE_2 = 0x02
 )
 
+var file *os.File
+
 // @author yinheli
 type QQwry struct {
-	Ip       string
-	Country  string
-	City     string
-	filepath string
-	file     *os.File
+	Ip      string
+	Country string
+	City    string
 }
 
-func NewQQwry(file string) (qqwry *QQwry) {
-	qqwry = &QQwry{filepath: file}
-	return
-}
-
-func (this *QQwry) Find(ip string) {
-	if this.filepath == "" {
-		return
+func NewQQwry(filepath string) *QQwry {
+	if filepath == "" {
+		log.Fatalln("file path is null")
 	}
-
-	file, err := os.OpenFile(this.filepath, os.O_RDONLY, 0400)
-	defer file.Close()
+	fileData, err := os.OpenFile(filepath, os.O_RDONLY, 0400)
 	if err != nil {
-		return
+		log.Fatalln(err.Error())
 	}
-	this.file = file
+	file = fileData
+	qqwry := &QQwry{}
+	return qqwry
+}
 
-	this.Ip = ip
+func (this *QQwry) Find(ip string) *QQwry {
 	offset := this.searchIndex(binary.BigEndian.Uint32(net.ParseIP(ip).To4()))
 	// log.Println("loc offset:", offset)
 	if offset <= 0 {
-		return
+		return nil
 	}
 
 	var country []byte
@@ -78,13 +75,13 @@ func (this *QQwry) Find(ip string) {
 	enc := mahonia.NewDecoder("gbk")
 	this.Country = enc.ConvertString(string(country))
 	this.City = enc.ConvertString(string(area))
-
+	return this
 }
 
 func (this *QQwry) readMode(offset uint32) byte {
-	this.file.Seek(int64(offset), 0)
+	file.Seek(int64(offset), 0)
 	mode := make([]byte, 1)
-	this.file.Read(mode)
+	file.Read(mode)
 	return mode[0]
 }
 
@@ -104,11 +101,11 @@ func (this *QQwry) readArea(offset uint32) []byte {
 }
 
 func (this *QQwry) readString(offset uint32) []byte {
-	this.file.Seek(int64(offset), 0)
+	file.Seek(int64(offset), 0)
 	data := make([]byte, 0, 30)
 	buf := make([]byte, 1)
 	for {
-		this.file.Read(buf)
+		file.Read(buf)
 		if buf[0] == 0 {
 			break
 		}
@@ -119,8 +116,8 @@ func (this *QQwry) readString(offset uint32) []byte {
 
 func (this *QQwry) searchIndex(ip uint32) uint32 {
 	header := make([]byte, 8)
-	this.file.Seek(0, 0)
-	this.file.Read(header)
+	file.Seek(0, 0)
+	file.Read(header)
 
 	start := binary.LittleEndian.Uint32(header[:4])
 	end := binary.LittleEndian.Uint32(header[4:])
@@ -129,16 +126,16 @@ func (this *QQwry) searchIndex(ip uint32) uint32 {
 
 	for {
 		mid := this.getMiddleOffset(start, end)
-		this.file.Seek(int64(mid), 0)
+		file.Seek(int64(mid), 0)
 		buf := make([]byte, INDEX_LEN)
-		this.file.Read(buf)
+		file.Read(buf)
 		_ip := binary.LittleEndian.Uint32(buf[:4])
 
 		// log.Printf(">> %v, %v, %v -- %v", start, mid, end, hex.EncodeToString(buf[:4]))
 
 		if end-start == INDEX_LEN {
 			offset := byte3ToUInt32(buf[4:])
-			this.file.Read(buf)
+			file.Read(buf)
 			if ip < binary.LittleEndian.Uint32(buf[:4]) {
 				return offset
 			} else {
@@ -161,7 +158,7 @@ func (this *QQwry) searchIndex(ip uint32) uint32 {
 
 func (this *QQwry) readUInt24() uint32 {
 	buf := make([]byte, 3)
-	this.file.Read(buf)
+	file.Read(buf)
 	return byte3ToUInt32(buf)
 }
 
